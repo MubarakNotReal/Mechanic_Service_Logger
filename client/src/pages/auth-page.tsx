@@ -1,0 +1,238 @@
+import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { Redirect } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Wrench, ClipboardCheck, Users, TrendingUp } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
+
+export default function AuthPage() {
+  const { user, loginMutation, registerMutation } = useAuth();
+  const [loginData, setLoginData] = useState({ username: "", password: "" });
+  const [registerData, setRegisterData] = useState({
+    username: "",
+    password: "",
+    name: "",
+    role: "viewer" as "admin" | "mechanic" | "viewer",
+  });
+
+  if (user) {
+    return <Redirect to="/" />;
+  }
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    loginMutation.mutate(loginData);
+  };
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    registerMutation.mutate(registerData);
+  };
+
+  return (
+    <div className="min-h-screen grid lg:grid-cols-2">
+      <div className="flex items-center justify-center p-8">
+        <div className="w-full max-w-md space-y-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-8 w-8 text-primary" />
+              <h1 className="text-2xl font-bold">AutoShop Manager</h1>
+            </div>
+            <ThemeToggle />
+          </div>
+
+          <Tabs defaultValue="login" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
+              <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="login">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Welcome Back</CardTitle>
+                  <CardDescription>Sign in to your account to continue</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="login-username">Username</Label>
+                      <Input
+                        id="login-username"
+                        type="text"
+                        placeholder="Enter your username"
+                        value={loginData.username}
+                        onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
+                        required
+                        data-testid="input-login-username"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="login-password">Password</Label>
+                      <Input
+                        id="login-password"
+                        type="password"
+                        placeholder="Enter your password"
+                        value={loginData.password}
+                        onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                        required
+                        data-testid="input-login-password"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={loginMutation.isPending}
+                      data-testid="button-login-submit"
+                    >
+                      {loginMutation.isPending ? "Signing in..." : "Sign In"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="register">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Create Account</CardTitle>
+                  <CardDescription>Register a new user for your team</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="register-name">Full Name</Label>
+                      <Input
+                        id="register-name"
+                        type="text"
+                        placeholder="Enter full name"
+                        value={registerData.name}
+                        onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
+                        required
+                        data-testid="input-register-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-username">Username</Label>
+                      <Input
+                        id="register-username"
+                        type="text"
+                        placeholder="Choose a username"
+                        value={registerData.username}
+                        onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
+                        required
+                        data-testid="input-register-username"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-password">Password</Label>
+                      <Input
+                        id="register-password"
+                        type="password"
+                        placeholder="Create a password"
+                        value={registerData.password}
+                        onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                        required
+                        data-testid="input-register-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-role">Role</Label>
+                      <Select
+                        value={registerData.role}
+                        onValueChange={(value: "admin" | "mechanic" | "viewer") =>
+                          setRegisterData({ ...registerData, role: value })
+                        }
+                      >
+                        <SelectTrigger id="register-role" data-testid="select-register-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="mechanic">Mechanic</SelectItem>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Admin: Full access • Mechanic: Create/Edit • Viewer: Read-only
+                      </p>
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={registerMutation.isPending}
+                      data-testid="button-register-submit"
+                    >
+                      {registerMutation.isPending ? "Creating account..." : "Create Account"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
+      <div className="hidden lg:flex items-center justify-center bg-muted p-12">
+        <div className="max-w-md space-y-8">
+          <div>
+            <h2 className="text-3xl font-bold mb-4">Professional Shop Management</h2>
+            <p className="text-lg text-muted-foreground">
+              Streamline your mechanic shop operations with powerful tools for customer tracking,
+              vehicle management, and service history.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Customer Management</h3>
+                <p className="text-sm text-muted-foreground">
+                  Track customer information, vehicles, and complete service history in one place.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <ClipboardCheck className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Service Records</h3>
+                <p className="text-sm text-muted-foreground">
+                  Document every repair with detailed work logs, parts used, and cost breakdowns.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <TrendingUp className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-1">Business Insights</h3>
+                <p className="text-sm text-muted-foreground">
+                  View dashboard analytics and track your shop's performance over time.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
