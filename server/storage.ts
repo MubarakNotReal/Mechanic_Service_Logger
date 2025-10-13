@@ -3,6 +3,7 @@ import {
   customers,
   vehicles,
   services,
+  serviceMedia,
   type User,
   type InsertUser,
   type Customer,
@@ -11,17 +12,21 @@ import {
   type InsertVehicle,
   type Service,
   type InsertService,
+  type ServiceMedia,
+  type InsertServiceMedia,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, or, like, desc } from "drizzle-orm";
+import { eq, or, like, ilike, desc } from "drizzle-orm";
 import session from "express-session";
 import { pool } from "./db";
 import connectPg from "connect-pg-simple";
 
 const PostgresSessionStore = connectPg(session);
 
+type ServiceInsert = typeof services.$inferInsert;
+
 export interface IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
   
   getUsers(): Promise<User[]>;
   getUser(id: string): Promise<User | undefined>;
@@ -38,6 +43,7 @@ export interface IStorage {
   
   getVehicles(): Promise<Vehicle[]>;
   getVehicle(id: number): Promise<Vehicle | undefined>;
+  getVehicleByPlate(plateNumber: string): Promise<Vehicle | undefined>;
   getVehiclesByCustomer(customerId: number): Promise<Vehicle[]>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: number, vehicle: InsertVehicle): Promise<Vehicle | undefined>;
@@ -48,10 +54,12 @@ export interface IStorage {
   getServicesByVehicle(vehicleId: number): Promise<Service[]>;
   getServicesByCustomer(customerId: number): Promise<Service[]>;
   createService(service: InsertService): Promise<Service>;
+  addServiceMedia(media: InsertServiceMedia[]): Promise<ServiceMedia[]>;
+  getServiceMedia(serviceId: number): Promise<ServiceMedia[]>;
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({ pool, createTableIfMissing: true });
@@ -130,6 +138,11 @@ export class DatabaseStorage implements IStorage {
     return vehicle || undefined;
   }
 
+  async getVehicleByPlate(plateNumber: string): Promise<Vehicle | undefined> {
+    const [vehicle] = await db.select().from(vehicles).where(ilike(vehicles.plateNumber, plateNumber));
+    return vehicle || undefined;
+  }
+
   async getVehiclesByCustomer(customerId: number): Promise<Vehicle[]> {
     return await db.select().from(vehicles).where(eq(vehicles.customerId, customerId));
   }
@@ -178,8 +191,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createService(service: InsertService): Promise<Service> {
-    const [newService] = await db.insert(services).values(service).returning();
+    const normalizedService: ServiceInsert = {
+      ...service,
+      laborCost:
+        service.laborCost !== undefined && service.laborCost !== null
+          ? String(service.laborCost)
+          : "0",
+      partsCost:
+        service.partsCost !== undefined && service.partsCost !== null
+          ? String(service.partsCost)
+          : "0",
+      totalCost:
+        service.totalCost !== undefined && service.totalCost !== null
+          ? String(service.totalCost)
+          : "0",
+    };
+
+    const [newService] = await db.insert(services).values(normalizedService).returning();
     return newService;
+  }
+
+  async addServiceMedia(mediaEntries: InsertServiceMedia[]): Promise<ServiceMedia[]> {
+    if (mediaEntries.length === 0) {
+      return [];
+    }
+
+    return await db.insert(serviceMedia).values(mediaEntries).returning();
+  }
+
+  async getServiceMedia(serviceId: number): Promise<ServiceMedia[]> {
+    return await db
+      .select()
+      .from(serviceMedia)
+      .where(eq(serviceMedia.serviceId, serviceId))
+      .orderBy(desc(serviceMedia.createdAt));
   }
 }
 

@@ -1,9 +1,23 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, Edit, Trash2, Car as CarIcon } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { useLocation } from "wouter";
+import {
+  AlertCircle,
+  Calendar,
+  Car,
+  DollarSign,
+  Loader2,
+  Plus,
+  Search,
+  User,
+  Wrench,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -16,382 +30,676 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { Vehicle, InsertVehicle, Customer } from "@shared/schema";
-import { Skeleton } from "@/components/ui/skeleton";
+import type { Customer, Service, Vehicle } from "@shared/schema";
+
+type LookupResult = {
+  vehicle: Vehicle;
+  customer: Customer | null;
+  services: Service[];
+};
+
+type LookupError = Error & { status?: number };
+
+type RegistrationFormState = {
+  customerName: string;
+  phone: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  year: string;
+};
+
+type RegistrationResult = {
+  customer: Customer;
+  vehicle: Vehicle;
+};
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "SAR",
+  minimumFractionDigits: 2,
+});
+function sortServicesByDate(entries: Service[]): Service[] {
+  return [...entries].sort(
+    (a, b) => new Date(b.serviceDate).getTime() - new Date(a.serviceDate).getTime(),
+  );
+}
 
 export default function VehiclesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
-  const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
-  const [formData, setFormData] = useState<InsertVehicle>({
-    customerId: 0,
+  const [currentLocation, setLocation] = useLocation();
+
+  const [plateInput, setPlateInput] = useState("");
+  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const [registrationForm, setRegistrationForm] = useState<RegistrationFormState>(() => ({
+    customerName: "",
+    phone: "",
     plateNumber: "",
     make: "",
     model: "",
-    year: new Date().getFullYear(),
-  });
+    year: String(new Date().getFullYear()),
+  }));
 
-  const { data: vehicles = [], isLoading: loadingVehicles } = useQuery<Vehicle[]>({
-    queryKey: ["/api/vehicles"],
-  });
-
-  const { data: customers = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: InsertVehicle) => {
-      const res = await apiRequest("POST", "/api/vehicles", data);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
-      toast({ title: "Vehicle created successfully" });
-      setDialogOpen(false);
-      resetForm();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to create vehicle", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: InsertVehicle }) => {
-      const res = await apiRequest("PATCH", `/api/vehicles/${id}`, data);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
-      toast({ title: "Vehicle updated successfully" });
-      setDialogOpen(false);
-      setEditingVehicle(null);
-      resetForm();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to update vehicle", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/vehicles/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
-      toast({ title: "Vehicle deleted successfully" });
-      setDeleteDialogOpen(false);
-      setDeletingVehicle(null);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to delete vehicle", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const resetForm = () => {
-    setFormData({
-      customerId: 0,
-      plateNumber: "",
-      make: "",
-      model: "",
-      year: new Date().getFullYear(),
-    });
-  };
-
-  const handleOpenDialog = (vehicle?: Vehicle) => {
-    if (vehicle) {
-      setEditingVehicle(vehicle);
-      setFormData({
-        customerId: vehicle.customerId,
-        plateNumber: vehicle.plateNumber,
-        make: vehicle.make,
-        model: vehicle.model,
-        year: vehicle.year,
-      });
-    } else {
-      setEditingVehicle(null);
-      resetForm();
-    }
-    setDialogOpen(true);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingVehicle) {
-      updateMutation.mutate({ id: editingVehicle.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
-  };
-
-  const handleDelete = (vehicle: Vehicle) => {
-    setDeletingVehicle(vehicle);
-    setDeleteDialogOpen(true);
-  };
-
-  const filteredVehicles = vehicles.filter(
-    (vehicle) =>
-      vehicle.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.make.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customers.find((c) => c.id === vehicle.customerId)?.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [initializedPlate, setInitializedPlate] = useState<string | null>(null);
+  const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
 
   const canEdit = user?.role === "admin" || user?.role === "mechanic";
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-vehicles-title">Vehicles</h1>
-          <p className="text-muted-foreground">Manage vehicle information and ownership</p>
-        </div>
-        {canEdit && (
-          <Button onClick={() => handleOpenDialog()} data-testid="button-add-vehicle">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Vehicle
-          </Button>
-        )}
-      </div>
+  const lookupMutation = useMutation<LookupResult, LookupError, string>({
+    mutationFn: async (plate) => {
+      const normalizedPlate = plate.trim().toUpperCase();
+      const res = await fetch(`/api/vehicles/lookup/${encodeURIComponent(normalizedPlate)}`, {
+        credentials: "include",
+      });
 
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <Search className="h-5 w-5 text-muted-foreground" />
+      if (res.status === 404) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        const error = new Error(body.error ?? "Vehicle not found");
+        (error as LookupError).status = 404;
+        throw error;
+      }
+
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        const error = new Error(text);
+        (error as LookupError).status = res.status;
+        throw error;
+      }
+
+      const payload = (await res.json()) as LookupResult;
+      return { ...payload, services: sortServicesByDate(payload.services) };
+    },
+    onMutate: () => {
+      setLookupError(null);
+      setNotFound(false);
+      setLookupResult(null);
+    },
+    onSuccess: (data, plate) => {
+      setLookupResult(data);
+      setNotFound(false);
+      setLookupError(null);
+      setRegistrationForm((prev) => ({
+        ...prev,
+        plateNumber: data.vehicle.plateNumber,
+      }));
+      setPlateInput(plate);
+      setInitializedPlate(data.vehicle.plateNumber);
+      setLocation(`/?plate=${encodeURIComponent(data.vehicle.plateNumber)}`, { replace: true });
+    },
+    onError: (error, plate) => {
+      if (error.status === 404) {
+        setNotFound(true);
+        setLookupResult(null);
+        setRegistrationForm((prev) => ({
+          ...prev,
+          plateNumber: plate.trim().toUpperCase(),
+        }));
+        const normalized = plate.trim().toUpperCase();
+        setInitializedPlate(normalized);
+        setLocation(`/?plate=${encodeURIComponent(normalized)}`, { replace: true });
+        return;
+      }
+
+      setLookupError(error.message || "Failed to search for vehicle");
+    },
+  });
+
+  const registerMutation = useMutation<RegistrationResult, Error, RegistrationFormState>({
+    mutationFn: async (form) => {
+      const normalizedPlate = form.plateNumber.trim().toUpperCase();
+      if (!normalizedPlate) {
+        throw new Error("Plate number is required");
+      }
+
+      const customerPayload = {
+        name: form.customerName.trim(),
+        phone: form.phone.trim(),
+        notes: "",
+      } as const;
+
+      const customerRes = await apiRequest("POST", "/api/customers", customerPayload);
+      const customer = (await customerRes.json()) as Customer;
+
+      const vehiclePayload = {
+        customerId: customer.id,
+        plateNumber: normalizedPlate,
+        make: form.make.trim(),
+        model: form.model.trim(),
+        year: Number.parseInt(form.year, 10) || new Date().getFullYear(),
+      } satisfies Partial<Vehicle>;
+
+      const vehicleRes = await apiRequest("POST", "/api/vehicles", vehiclePayload);
+      const vehicle = (await vehicleRes.json()) as Vehicle;
+
+      return { customer, vehicle };
+    },
+    onMutate: () => {
+      setRegistrationError(null);
+    },
+    onSuccess: ({ customer, vehicle }) => {
+      setLookupResult({
+        vehicle,
+        customer,
+        services: [],
+      });
+      setNotFound(false);
+      setPlateInput(vehicle.plateNumber);
+      setInitializedPlate(vehicle.plateNumber);
+      setRegistrationDialogOpen(false);
+      setRegistrationForm((prev) => ({
+        ...prev,
+        customerName: "",
+        phone: "",
+        plateNumber: vehicle.plateNumber,
+        make: "",
+        model: "",
+        year: String(new Date().getFullYear()),
+      }));
+      toast({ title: "Vehicle registered", description: "You can now add service records." });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      setLocation(`/?plate=${encodeURIComponent(vehicle.plateNumber)}`, { replace: true });
+    },
+    onError: (error) => {
+      setRegistrationError(error.message || "Failed to register vehicle");
+      toast({
+        title: "Registration failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { mutate: lookupMutate, isPending: isLookupPending } = lookupMutation;
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const normalizedPlate = plateInput.trim().toUpperCase();
+    if (!normalizedPlate) {
+      setLookupError("Plate number is required");
+      return;
+    }
+
+    setLookupError(null);
+    setNotFound(false);
+    setInitializedPlate(normalizedPlate);
+    lookupMutate(normalizedPlate);
+  };
+
+  const handleRegistrationSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    registerMutation.mutate({ ...registrationForm });
+  };
+
+  const openRegistrationDialog = () => {
+    setRegistrationForm((prev) => ({
+      ...prev,
+      plateNumber: plateInput.trim().toUpperCase() || prev.plateNumber,
+    }));
+    setRegistrationError(null);
+    setRegistrationDialogOpen(true);
+  };
+
+  const closeRegistrationDialog = () => {
+    if (registerMutation.isPending) {
+      return;
+    }
+
+    setRegistrationError(null);
+    setRegistrationDialogOpen(false);
+  };
+
+  const renderRegistrationForm = (
+    options: {
+      onCancel?: () => void;
+      submitLabel?: string;
+    } = {},
+  ) => (
+    <form onSubmit={handleRegistrationSubmit} className="space-y-6">
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="customerName">Customer name *</Label>
             <Input
-              placeholder="Search by plate number, make, model, or owner..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-md"
-              data-testid="input-vehicle-search"
+              id="customerName"
+              value={registrationForm.customerName}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({ ...prev, customerName: event.target.value }))
+              }
+              placeholder="Full name"
+              required
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone *</Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={registrationForm.phone}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({ ...prev, phone: event.target.value }))
+              }
+              placeholder="Contact number"
+              required
+            />
+          </div>
+        </div>
+      </div>
 
-          {loadingVehicles || loadingCustomers ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : filteredVehicles.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No vehicles found</p>
-            </div>
+      <Separator />
+
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold uppercase text-muted-foreground">Vehicle details</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="plateNumber">Plate number *</Label>
+            <Input
+              id="plateNumber"
+              value={registrationForm.plateNumber}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({
+                  ...prev,
+                  plateNumber: event.target.value.toUpperCase(),
+                }))
+              }
+              className="uppercase font-mono"
+              placeholder="ABC-1234"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="reg-year">Year *</Label>
+            <Input
+              id="reg-year"
+              type="number"
+              min="1900"
+              max={new Date().getFullYear() + 1}
+              value={registrationForm.year}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({ ...prev, year: event.target.value }))
+              }
+              required
+            />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="make">Make *</Label>
+            <Input
+              id="make"
+              value={registrationForm.make}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({ ...prev, make: event.target.value }))
+              }
+              placeholder="Manufacturer"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="model">Model *</Label>
+            <Input
+              id="model"
+              value={registrationForm.model}
+              onChange={(event) =>
+                setRegistrationForm((prev) => ({ ...prev, model: event.target.value }))
+              }
+              placeholder="Model name"
+              required
+            />
+          </div>
+        </div>
+      </div>
+
+      {registrationError && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4" />
+          <span>{registrationError}</span>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        {options.onCancel && (
+          <Button type="button" variant="outline" onClick={options.onCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button type="submit" disabled={registerMutation.isPending}>
+          {registerMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Registering
+            </>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plate Number</TableHead>
-                  <TableHead>Vehicle</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead>Owner</TableHead>
-                  {canEdit && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredVehicles.map((vehicle) => {
-                  const customer = customers.find((c) => c.id === vehicle.customerId);
-                  return (
-                    <TableRow key={vehicle.id} data-testid={`row-vehicle-${vehicle.id}`}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <CarIcon className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono font-semibold">{vehicle.plateNumber}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {vehicle.make} {vehicle.model}
-                      </TableCell>
-                      <TableCell>{vehicle.year}</TableCell>
-                      <TableCell>
-                        {customer ? (
-                          <div>
-                            <p className="font-medium">{customer.name}</p>
-                            <p className="text-sm text-muted-foreground font-mono">{customer.phone}</p>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Unknown</span>
-                        )}
-                      </TableCell>
-                      {canEdit && (
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenDialog(vehicle)}
-                              data-testid={`button-edit-vehicle-${vehicle.id}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(vehicle)}
-                              data-testid={`button-delete-vehicle-${vehicle.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            options.submitLabel ?? "Register vehicle"
+          )}
+        </Button>
+      </div>
+    </form>
+  );
+
+  const goToNewService = () => {
+    if (!lookupResult?.vehicle) {
+      return;
+    }
+
+    setLocation(`/services/new?plate=${encodeURIComponent(lookupResult.vehicle.plateNumber)}`);
+  };
+
+  const openServiceDetail = (serviceId: number) => {
+    setLocation(`/services/${serviceId}`);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const plateParam = searchParams.get("plate");
+
+    if (!plateParam) {
+      setInitializedPlate(null);
+      return;
+    }
+
+    const normalizedPlate = plateParam.trim().toUpperCase();
+    if (!normalizedPlate) {
+      return;
+    }
+
+    setPlateInput((prev) => (prev === normalizedPlate ? prev : normalizedPlate));
+
+    if (isLookupPending) {
+      return;
+    }
+
+    if (lookupResult && lookupResult.vehicle.plateNumber === normalizedPlate) {
+      return;
+    }
+
+    if (initializedPlate === normalizedPlate && notFound) {
+      return;
+    }
+
+    if (initializedPlate !== normalizedPlate) {
+      setInitializedPlate(normalizedPlate);
+    }
+
+    lookupMutate(normalizedPlate);
+  }, [currentLocation, initializedPlate, isLookupPending, lookupMutate, lookupResult, notFound]);
+
+  const isLoadingLookup = isLookupPending;
+  const hasLookupResult = Boolean(lookupResult);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Vehicle search</h1>
+        <p className="text-muted-foreground">
+          Look up vehicles by plate number, review their history, and register new customers when needed.
+        </p>
+      </div>
+
+      <Dialog
+        open={registrationDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            openRegistrationDialog();
+          } else {
+            closeRegistrationDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Register a new vehicle</DialogTitle>
+            <DialogDescription>
+              Capture the owner and vehicle details below to add a new vehicle to the system.
+            </DialogDescription>
+          </DialogHeader>
+          {renderRegistrationForm({ onCancel: closeRegistrationDialog })}
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Search by plate number</CardTitle>
+            <CardDescription>Type a plate number to load vehicle, owner, and service history.</CardDescription>
+          </div>
+          {canEdit && (
+            <Button onClick={openRegistrationDialog} className="whitespace-nowrap">
+              <Plus className="mr-2 h-4 w-4" />
+              Register vehicle
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSearchSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Label htmlFor="plate-search">Plate number</Label>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  id="plate-search"
+                  value={plateInput}
+                  onChange={(event) => setPlateInput(event.target.value.toUpperCase())}
+                  placeholder="e.g. ABC-1234"
+                  className="uppercase font-mono"
+                  required
+                />
+                <Button type="submit" disabled={isLoadingLookup} className="whitespace-nowrap">
+                  {isLoadingLookup ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Searching
+                    </>
+                  ) : (
+                    <>
+                      <Search className="mr-2 h-4 w-4" />
+                      Search
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </form>
+          {lookupError && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4" />
+              <span>{lookupError}</span>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingVehicle ? "Edit Vehicle" : "Add New Vehicle"}</DialogTitle>
-            <DialogDescription>
-              {editingVehicle
-                ? "Update vehicle information below"
-                : "Enter vehicle details to create a new record"}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="customer">Owner *</Label>
-              <Select
-                value={formData.customerId.toString()}
-                onValueChange={(value) => setFormData({ ...formData, customerId: parseInt(value) })}
-              >
-                <SelectTrigger id="customer" data-testid="select-vehicle-customer">
-                  <SelectValue placeholder="Select a customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id.toString()}>
-                      {customer.name} ({customer.phone})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="plateNumber">Plate Number *</Label>
-              <Input
-                id="plateNumber"
-                value={formData.plateNumber}
-                onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value })}
-                required
-                data-testid="input-vehicle-plate"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="make">Make *</Label>
-                <Input
-                  id="make"
-                  value={formData.make}
-                  onChange={(e) => setFormData({ ...formData, make: e.target.value })}
-                  required
-                  data-testid="input-vehicle-make"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="model">Model *</Label>
-                <Input
-                  id="model"
-                  value={formData.model}
-                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                  required
-                  data-testid="input-vehicle-model"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="year">Year *</Label>
-              <Input
-                id="year"
-                type="number"
-                min="1900"
-                max={new Date().getFullYear() + 1}
-                value={formData.year}
-                onChange={(e) => setFormData({ ...formData, year: parseInt(e.target.value) })}
-                required
-                data-testid="input-vehicle-year"
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-                data-testid="button-cancel-vehicle"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-                data-testid="button-submit-vehicle"
-              >
-                {createMutation.isPending || updateMutation.isPending
-                  ? "Saving..."
-                  : editingVehicle
-                  ? "Update"
-                  : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {isLoadingLookup && (
+        <Card>
+          <CardContent className="space-y-3 p-6">
+            {[1, 2].map((key) => (
+              <Skeleton key={key} className="h-16 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete {deletingVehicle?.plateNumber} ({deletingVehicle?.make}{" "}
-              {deletingVehicle?.model}) and all associated service records. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deletingVehicle && deleteMutation.mutate(deletingVehicle.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="button-confirm-delete"
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {hasLookupResult && lookupResult && (
+        <>
+          <Card>
+            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Car className="h-5 w-5 text-muted-foreground" />
+                  {lookupResult.vehicle.make} {lookupResult.vehicle.model} ({lookupResult.vehicle.year})
+                </CardTitle>
+                <Badge variant="outline" className="w-fit font-mono text-base">
+                  {lookupResult.vehicle.plateNumber}
+                </Badge>
+              </div>
+              {canEdit && (
+                <Button onClick={goToNewService}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New service
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase text-muted-foreground">Vehicle details</h3>
+                  <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Created</p>
+                      <p className="font-medium">
+                        {format(new Date(lookupResult.vehicle.createdAt), "PPP")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Vehicle ID</p>
+                      <p className="font-medium">#{lookupResult.vehicle.id}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase text-muted-foreground">Owner</h3>
+                  {lookupResult.customer ? (
+                    <div className="space-y-3 rounded-lg border p-4">
+                      <div className="flex items-center gap-3">
+                        <span className="rounded-full bg-muted p-2">
+                          <User className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="font-semibold">{lookupResult.customer.name}</p>
+                          <p className="text-xs text-muted-foreground">Customer #{lookupResult.customer.id}</p>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Phone</span>
+                          <span className="font-mono">{lookupResult.customer.phone}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Email</span>
+                          <span>{lookupResult.customer.email || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Address</span>
+                          <span className="text-right">
+                            {lookupResult.customer.address || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      Owner details are missing for this vehicle.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Service history</h3>
+                  <span className="text-sm text-muted-foreground">
+                    {lookupResult.services.length} record{lookupResult.services.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="mt-4 rounded-lg border">
+                  {lookupResult.services.length === 0 ? (
+                    <div className="py-12 text-center text-muted-foreground">
+                      No services recorded for this vehicle yet.
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Work performed</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Total cost</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lookupResult.services.map((service) => (
+                          <TableRow
+                            key={service.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => openServiceDetail(service.id)}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                <span>{format(new Date(service.serviceDate), "PPP")}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Wrench className="h-4 w-4 text-muted-foreground" />
+                                <span className="truncate max-w-sm">{service.workPerformed}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="capitalize">
+                                {service.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-semibold">
+                                  {currencyFormatter.format(
+                                    Number.parseFloat(String(service.totalCost ?? "0")) || 0,
+                                  )}
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+        </>
+      )}
+
+      {!hasLookupResult && notFound && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Register a new vehicle</CardTitle>
+            <CardDescription>
+              No vehicle matched this plate. Capture the owner and vehicle details to register it now.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {renderRegistrationForm({
+              onCancel: () => {
+                setRegistrationError(null);
+                setNotFound(false);
+              },
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

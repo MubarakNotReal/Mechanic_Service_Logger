@@ -1,10 +1,19 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import type { ListenOptions } from "net";
+import path from "path";
+import fs from "fs/promises";
+import multer from "multer";
+
+type ExtendedListenOptions = ListenOptions & { reusePort?: boolean };
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+const uploadRoot = path.resolve(process.cwd(), "uploads");
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -39,7 +48,15 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  await fs.mkdir(uploadRoot, { recursive: true });
+  app.use("/uploads", express.static(uploadRoot));
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      res.status(400).json({ message: err.message });
+      throw err;
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
@@ -60,12 +77,19 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
+  const port = parseInt(process.env.PORT || "5000", 10);
+
+  const listenOptions: ExtendedListenOptions = {
     port,
     host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  };
+
+  if (process.platform !== "win32") {
+    // reusePort causes ENOTSUP on Windows
+    listenOptions.reusePort = true;
+  }
+
+  server.listen(listenOptions, () => {
     log(`serving on port ${port}`);
   });
 })();

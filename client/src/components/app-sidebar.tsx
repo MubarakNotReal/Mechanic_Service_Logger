@@ -1,4 +1,4 @@
-import { Home, Users, Car, FileText, LogOut, Wrench } from "lucide-react";
+import { Home, Car, LogOut, Wrench } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -18,24 +18,14 @@ import { useAuth } from "@/hooks/use-auth";
 
 const menuItems = [
   {
-    title: "Dashboard",
+    title: "Search",
     url: "/",
-    icon: Home,
-  },
-  {
-    title: "Customers",
-    url: "/customers",
-    icon: Users,
-  },
-  {
-    title: "Vehicles",
-    url: "/vehicles",
     icon: Car,
   },
   {
-    title: "Services",
-    url: "/services",
-    icon: FileText,
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: Home,
   },
 ];
 
@@ -62,16 +52,19 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
-                    <Link href={item.url} data-testid={`link-${item.title.toLowerCase()}`}>
-                      <item.icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {menuItems.map((item) => {
+                const isActive = location === item.url;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActive}>
+                      <Link href={item.url} data-testid={`link-${item.title.toLowerCase()}`}>
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -1,12 +1,69 @@
 import type { Express } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs/promises";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertVehicleSchema, insertServiceSchema } from "@shared/schema";
 import { requireAuth, requireRole } from "./middleware";
 
+const MEDIA_UPLOAD_LIMIT = 10;
+const MAX_MEDIA_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+const uploadRoot = path.resolve(process.cwd(), "uploads");
+const serviceMediaDir = path.join(uploadRoot, "service-media");
+
+const mediaStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdir(serviceMediaDir, { recursive: true })
+      .then(() => cb(null, serviceMediaDir))
+      .catch((error) => cb(error as Error, serviceMediaDir));
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${uniqueSuffix}-${sanitized}`);
+  },
+});
+
+const mediaUpload = multer({
+  storage: mediaStorage,
+  limits: {
+    fileSize: MAX_MEDIA_FILE_SIZE_BYTES,
+    files: MEDIA_UPLOAD_LIMIT,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/")) {
+      cb(null, true);
+    } else {
+  const error = new Error("Only image and video uploads are supported");
+  (error as any).status = 400;
+  cb(error);
+    }
+  },
+});
+
+function toRelativeMediaPath(absolutePath: string): string {
+  return path.relative(uploadRoot, absolutePath).split(path.sep).join("/");
+}
+
+async function cleanupUploadedFiles(files?: Express.Multer.File[]) {
+  if (!files || files.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    files.map((file) =>
+      fs.unlink(file.path).catch(() => {
+        /* ignore cleanup errors */
+      }),
+    ),
+  );
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
+  await fs.mkdir(serviceMediaDir, { recursive: true });
 
   app.get("/api/customers", requireAuth, async (_req, res) => {
     try {
@@ -69,6 +126,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vehicles = await storage.getVehicles();
       res.json(vehicles);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/vehicles/lookup/:plate", requireAuth, async (req, res) => {
+    const rawPlate = req.params.plate ?? "";
+    const plateNumber = rawPlate.trim();
+
+    if (!plateNumber) {
+      return res.status(400).json({ error: "Plate number is required" });
+    }
+
+    try {
+      const vehicle = await storage.getVehicleByPlate(plateNumber.toUpperCase());
+
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+
+      const customer = await storage.getCustomer(vehicle.customerId);
+      const services = await storage.getServicesByVehicle(vehicle.id);
+
+      res.json({
+        vehicle,
+        customer: customer ?? null,
+        services,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -148,6 +233,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/services/:id/media", requireAuth, async (req, res) => {
+    try {
+      const serviceId = Number.parseInt(req.params.id, 10);
+      if (!Number.isFinite(serviceId)) {
+        return res.status(400).json({ error: "Invalid service id" });
+      }
+
+      const mediaEntries = await storage.getServiceMedia(serviceId);
+      const payload = mediaEntries.map((entry) => ({
+        id: entry.id,
+        serviceId: entry.serviceId,
+        fileName: entry.fileName,
+        fileType: entry.fileType,
+        fileSize: entry.fileSize,
+        url: `/uploads/${entry.relativePath}`,
+        createdAt: entry.createdAt,
+      }));
+
+      res.json(payload);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/services/vehicle/:vehicleId", requireAuth, async (req, res) => {
     try {
       const services = await storage.getServicesByVehicle(parseInt(req.params.vehicleId));
@@ -166,15 +275,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/services", requireRole("admin", "mechanic"), async (req, res) => {
-    try {
-      const validatedData = insertServiceSchema.parse(req.body);
-      const service = await storage.createService(validatedData);
-      res.status(201).json(service);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
+  app.post(
+    "/api/services",
+    requireRole("admin", "mechanic"),
+    mediaUpload.array("media", MEDIA_UPLOAD_LIMIT),
+    async (req, res) => {
+      const uploadedFiles = (req.files as Express.Multer.File[]) ?? [];
+
+      try {
+        const rawBody = req.body ?? {};
+        const plateNumber = rawBody.plateNumber ? String(rawBody.plateNumber).trim().toUpperCase() : "";
+
+        let vehicleId: number | undefined = rawBody.vehicleId;
+        let customerId: number | undefined = rawBody.customerId;
+
+        if (plateNumber) {
+          const vehicle = await storage.getVehicleByPlate(plateNumber);
+          if (!vehicle) {
+            await cleanupUploadedFiles(uploadedFiles);
+            return res.status(404).json({ error: "Vehicle with this plate number was not found" });
+          }
+
+          vehicleId = vehicle.id;
+          customerId = vehicle.customerId;
+        }
+
+        if (!vehicleId || !customerId) {
+          await cleanupUploadedFiles(uploadedFiles);
+          return res.status(400).json({ error: "A valid plate number is required to create a service" });
+        }
+
+        const payload: Record<string, unknown> = {
+          ...rawBody,
+          vehicleId,
+          customerId,
+        };
+
+        delete payload.plateNumber;
+
+        const validatedData = insertServiceSchema.parse(payload);
+
+        const laborCostValue = Number.parseFloat(String(validatedData.laborCost ?? "0")) || 0;
+        const partsCostValue = Number.parseFloat(String(validatedData.partsCost ?? "0")) || 0;
+        const totalCostValue =
+          validatedData.totalCost !== undefined
+            ? Number.parseFloat(String(validatedData.totalCost)) || laborCostValue + partsCostValue
+            : laborCostValue + partsCostValue;
+
+        const service = await storage.createService({
+          ...validatedData,
+          laborCost: laborCostValue.toFixed(2),
+          partsCost: partsCostValue.toFixed(2),
+          totalCost: totalCostValue.toFixed(2),
+        });
+
+        if (uploadedFiles.length > 0) {
+          await storage.addServiceMedia(
+            uploadedFiles.map((file) => ({
+              serviceId: service.id,
+              fileName: file.originalname,
+              fileType: file.mimetype,
+              fileSize: file.size,
+              relativePath: toRelativeMediaPath(file.path),
+            })),
+          );
+        }
+
+        res.status(201).json(service);
+      } catch (error: any) {
+        await cleanupUploadedFiles(uploadedFiles);
+        res.status(400).json({ error: error.message });
+      }
+    },
+  );
 
   const httpServer = createServer(app);
 

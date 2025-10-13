@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Search, Edit, Trash2, Phone, Mail, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function CustomersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -201,7 +203,21 @@ export default function CustomersPage() {
               </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id} data-testid={`row-customer-${customer.id}`}>
+                  <TableRow
+                    key={customer.id}
+                    data-testid={`row-customer-${customer.id}`}
+                    className="cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => setLocation(`/customers/${customer.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setLocation(`/customers/${customer.id}`);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`View ${customer.name}'s service history`}
+                  >
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -235,7 +251,10 @@ export default function CustomersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleOpenDialog(customer)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenDialog(customer);
+                            }}
                             data-testid={`button-edit-customer-${customer.id}`}
                           >
                             <Edit className="h-4 w-4" />
@@ -243,7 +262,10 @@ export default function CustomersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(customer)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDelete(customer);
+                            }}
                             data-testid={`button-delete-customer-${customer.id}`}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -296,7 +318,7 @@ export default function CustomersPage() {
               <Input
                 id="email"
                 type="email"
-                value={formData.email}
+                value={formData.email ?? ""}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 data-testid="input-customer-email"
               />
@@ -305,7 +327,7 @@ export default function CustomersPage() {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
-                value={formData.address}
+                value={formData.address ?? ""}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 data-testid="input-customer-address"
               />
@@ -314,7 +336,7 @@ export default function CustomersPage() {
               <Label htmlFor="notes">Notes</Label>
               <Textarea
                 id="notes"
-                value={formData.notes}
+                value={formData.notes ?? ""}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
                 data-testid="input-customer-notes"
