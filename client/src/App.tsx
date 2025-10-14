@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -9,24 +10,27 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { AppSidebar } from "@/components/app-sidebar";
-import DashboardPage from "@/pages/dashboard-page";
-import VehiclesPage from "@/pages/vehicles-page";
-import ServiceDetailPage from "@/pages/service-detail-page";
-import ServiceCreatePage from "@/pages/service-create-page";
-import AuthPage from "@/pages/auth-page";
-import NotFound from "@/pages/not-found";
 import type React from "react";
+
+const VehiclesPage = lazy(() => import("@/pages/vehicles-page"));
+const ServiceCreatePage = lazy(() => import("@/pages/service-create-page"));
+const ServiceDetailPage = lazy(() => import("@/pages/service-detail-page"));
+const DashboardPage = lazy(() => import("@/pages/dashboard-page"));
+const AuthPage = lazy(() => import("@/pages/auth-page"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
   return (
-    <Switch>
-  <ProtectedRoute path="/" component={VehiclesPage} />
-  <ProtectedRoute path="/services/new" component={ServiceCreatePage} />
-  <ProtectedRoute path="/services/:serviceId" component={ServiceDetailPage} />
-      <ProtectedRoute path="/dashboard" component={DashboardPage} />
-      <Route path="/auth" component={AuthPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading…</div>}>
+      <Switch>
+        <ProtectedRoute path="/" component={VehiclesPage} />
+        <ProtectedRoute path="/services/new" component={ServiceCreatePage} />
+        <ProtectedRoute path="/services/:serviceId" component={ServiceDetailPage} />
+        <ProtectedRoute path="/dashboard" component={DashboardPage} />
+        <Route path="/auth" component={AuthPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -36,7 +40,9 @@ export default function App() {
       <ThemeProvider defaultTheme="dark">
         <AuthProvider>
           <TooltipProvider>
-            <AppContent />
+            <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading…</div>}>
+              <AppContent />
+            </Suspense>
             <Toaster />
           </TooltipProvider>
         </AuthProvider>

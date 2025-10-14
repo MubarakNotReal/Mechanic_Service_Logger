@@ -262,7 +262,12 @@ export default function DashboardPage() {
                   <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
                   <YAxis allowDecimals={false} />
                   <ChartTooltip cursor={{ fill: "rgba(59,130,246,0.1)" }} content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="var(--color-requests)" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="count"
+                    fill="var(--color-requests)"
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
+                  />
                 </BarChart>
               </ChartContainer>
             )}
@@ -286,7 +291,12 @@ export default function DashboardPage() {
                   <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
                   <YAxis allowDecimals={false} />
                   <ChartTooltip cursor={{ fill: "rgba(34,197,94,0.1)" }} content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="var(--color-requests)" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="count"
+                    fill="var(--color-requests)"
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
+                  />
                 </BarChart>
               </ChartContainer>
             )}

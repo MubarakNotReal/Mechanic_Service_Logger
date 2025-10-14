@@ -239,12 +239,16 @@ export default function ServiceDetailPage() {
                                   <video
                                     src={entry.url}
                                     controls
+                                    preload="metadata"
+                                    playsInline
                                     className="h-full w-full object-cover"
                                   />
                                 ) : (
                                   <img
                                     src={entry.url}
                                     alt={entry.fileName}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="h-full w-full object-cover"
                                   />
                                 )}
