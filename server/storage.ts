@@ -16,7 +16,7 @@ import {
   type InsertServiceMedia,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, or, like, ilike, desc } from "drizzle-orm";
+import { eq, or, like, ilike, desc, sql } from "drizzle-orm";
 import session from "express-session";
 import { pool } from "./db";
 import connectPg from "connect-pg-simple";
@@ -75,7 +75,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.username}) = lower(${username})`);
+    return user || undefined;
     return user || undefined;
   }
 
