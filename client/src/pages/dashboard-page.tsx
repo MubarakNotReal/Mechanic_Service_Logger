@@ -251,27 +251,25 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
-              <Skeleton className="h-[240px] w-full" />
+              <Skeleton className="h-[220px] w-full sm:h-[260px]" />
             ) : (
-              <div className="-mx-2 overflow-x-auto sm:mx-0">
-                <ChartContainer
-                  className="h-[240px] min-w-[480px] sm:min-w-0"
-                  config={{ requests: { label: "Requests", color: "hsl(217, 91%, 60%)" } }}
-                >
-                  <BarChart data={hourlyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
-                    <YAxis allowDecimals={false} />
-                    <ChartTooltip cursor={{ fill: "rgba(59,130,246,0.1)" }} content={<ChartTooltipContent />} />
-                    <Bar
-                      dataKey="count"
-                      fill="var(--color-requests)"
-                      radius={[4, 4, 0, 0]}
-                      isAnimationActive={false}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              </div>
+              <ChartContainer
+                className="h-[220px] w-full sm:h-[260px]"
+                config={{ requests: { label: "Requests", color: "hsl(217, 91%, 60%)" } }}
+              >
+                <BarChart data={hourlyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickMargin={8} minTickGap={12} />
+                  <YAxis allowDecimals={false} />
+                  <ChartTooltip cursor={{ fill: "rgba(59,130,246,0.1)" }} content={<ChartTooltipContent />} />
+                  <Bar
+                    dataKey="count"
+                    fill="var(--color-requests)"
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>
@@ -282,27 +280,25 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
-              <Skeleton className="h-[240px] w-full" />
+              <Skeleton className="h-[220px] w-full sm:h-[260px]" />
             ) : (
-              <div className="-mx-2 overflow-x-auto sm:mx-0">
-                <ChartContainer
-                  className="h-[240px] min-w-[480px] sm:min-w-0"
-                  config={{ requests: { label: "Requests", color: "hsl(142, 71%, 45%)" } }}
-                >
-                  <BarChart data={monthlyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
-                    <YAxis allowDecimals={false} />
-                    <ChartTooltip cursor={{ fill: "rgba(34,197,94,0.1)" }} content={<ChartTooltipContent />} />
-                    <Bar
-                      dataKey="count"
-                      fill="var(--color-requests)"
-                      radius={[4, 4, 0, 0]}
-                      isAnimationActive={false}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              </div>
+              <ChartContainer
+                className="h-[220px] w-full sm:h-[260px]"
+                config={{ requests: { label: "Requests", color: "hsl(142, 71%, 45%)" } }}
+              >
+                <BarChart data={monthlyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickMargin={8} minTickGap={12} />
+                  <YAxis allowDecimals={false} />
+                  <ChartTooltip cursor={{ fill: "rgba(34,197,94,0.1)" }} content={<ChartTooltipContent />} />
+                  <Bar
+                    dataKey="count"
+                    fill="var(--color-requests)"
+                    radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>
