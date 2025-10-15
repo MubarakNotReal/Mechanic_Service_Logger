@@ -476,7 +476,7 @@ export default function VehiclesPage() {
       </Dialog>
 
       <Card>
-        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <CardHeader className="flex flex-col gap-2 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle>Search by plate number</CardTitle>
             <CardDescription>Type a plate number to load vehicle, owner, and service history.</CardDescription>
@@ -488,7 +488,7 @@ export default function VehiclesPage() {
             </Button>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
           <form onSubmit={handleSearchSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
               <Label htmlFor="plate-search">Plate number</Label>
@@ -528,7 +528,7 @@ export default function VehiclesPage() {
 
       {isLoadingLookup && (
         <Card>
-          <CardContent className="space-y-3 p-6">
+          <CardContent className="space-y-3 p-4 sm:p-6">
             {[1, 2].map((key) => (
               <Skeleton key={key} className="h-16 w-full" />
             ))}
@@ -539,7 +539,7 @@ export default function VehiclesPage() {
       {hasLookupResult && lookupResult && (
         <>
           <Card>
-            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <CardHeader className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Car className="h-5 w-5 text-muted-foreground" />
@@ -556,7 +556,7 @@ export default function VehiclesPage() {
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-6 p-4 pt-0 sm:px-6 sm:pb-6">
               <div className="grid gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase text-muted-foreground">Vehicle details</h3>
@@ -614,67 +614,99 @@ export default function VehiclesPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <h3 className="text-lg font-semibold">Service history</h3>
                   <span className="text-sm text-muted-foreground">
                     {lookupResult.services.length} record{lookupResult.services.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="mt-4 overflow-x-auto rounded-lg border">
-                  {lookupResult.services.length === 0 ? (
-                    <div className="py-12 text-center text-muted-foreground">
-                      No services recorded for this vehicle yet.
-                    </div>
-                  ) : (
-                    <Table className="min-w-[640px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Work performed</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Total cost</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {lookupResult.services.map((service) => (
-                          <TableRow
-                            key={service.id}
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => openServiceDetail(service.id)}
-                          >
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <span>{format(new Date(service.serviceDate), "PPP")}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Wrench className="h-4 w-4 text-muted-foreground" />
-                                <span className="truncate max-w-sm">{service.workPerformed}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="capitalize">
-                                {service.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-semibold">
-                                  {currencyFormatter.format(
-                                    Number.parseFloat(String(service.totalCost ?? "0")) || 0,
-                                  )}
-                                </span>
-                              </div>
-                            </TableCell>
+                {lookupResult.services.length === 0 ? (
+                  <div className="mt-4 rounded-lg border py-12 text-center text-muted-foreground">
+                    No services recorded for this vehicle yet.
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 hidden overflow-x-auto rounded-lg border md:block">
+                      <Table className="min-w-[640px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Work performed</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Total cost</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
+                        </TableHeader>
+                        <TableBody>
+                          {lookupResult.services.map((service) => (
+                            <TableRow
+                              key={service.id}
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => openServiceDetail(service.id)}
+                            >
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                                  <span>{format(new Date(service.serviceDate), "PPP")}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Wrench className="h-4 w-4 text-muted-foreground" />
+                                  <span className="truncate max-w-sm">{service.workPerformed}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="capitalize">
+                                  {service.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-semibold">
+                                    {currencyFormatter.format(
+                                      Number.parseFloat(String(service.totalCost ?? "0")) || 0,
+                                    )}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="mt-4 space-y-4 md:hidden">
+                      {lookupResult.services.map((service) => (
+                        <button
+                          key={service.id}
+                          type="button"
+                          className="w-full rounded-lg border p-4 text-left transition hover:border-primary/40 hover:bg-muted/40"
+                          onClick={() => openServiceDetail(service.id)}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-muted-foreground">{format(new Date(service.serviceDate), "PPP")}</span>
+                            <Badge variant="secondary" className="capitalize">
+                              {service.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-2 flex items-start gap-2">
+                            <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="text-sm text-foreground">{service.workPerformed}</span>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Total cost</span>
+                            <span className="flex items-center gap-1 font-semibold">
+                              <DollarSign className="h-4 w-4 text-muted-foreground" />
+                              {currencyFormatter.format(
+                                Number.parseFloat(String(service.totalCost ?? "0")) || 0,
+                              )}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

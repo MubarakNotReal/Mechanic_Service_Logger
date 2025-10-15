@@ -171,21 +171,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to AutoShop Manager</p>
+      <div className="space-y-2">
+        <h1 className="text-2xl font-bold sm:text-3xl" data-testid="text-dashboard-title">Dashboard</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">Welcome to AutoShop Manager</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {overallStats.map((stat, index) => (
-          <Card key={stat.title} data-testid={`card-stat-${index}`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <Card key={stat.title} data-testid={`card-stat-${index}`} className="h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
               <div className={`h-10 w-10 rounded-lg ${stat.bgColor} flex items-center justify-center`}>
                 <stat.icon className={`h-5 w-5 ${stat.color}`} />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
               {isLoading ? (
                 <Skeleton className="h-8 w-24" />
               ) : (
@@ -200,10 +200,10 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <CardTitle>Stats by month</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
@@ -222,10 +222,10 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <CardTitle>Stats by day</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
@@ -246,59 +246,63 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <CardTitle>Today’s traffic</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
               <Skeleton className="h-[240px] w-full" />
             ) : (
-              <ChartContainer
-                className="h-[240px]"
-                config={{ requests: { label: "Requests", color: "hsl(217, 91%, 60%)" } }}
-              >
-                <BarChart data={hourlyChartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
-                  <YAxis allowDecimals={false} />
-                  <ChartTooltip cursor={{ fill: "rgba(59,130,246,0.1)" }} content={<ChartTooltipContent />} />
-                  <Bar
-                    dataKey="count"
-                    fill="var(--color-requests)"
-                    radius={[4, 4, 0, 0]}
-                    isAnimationActive={false}
-                  />
-                </BarChart>
-              </ChartContainer>
+              <div className="-mx-2 overflow-x-auto sm:mx-0">
+                <ChartContainer
+                  className="h-[240px] min-w-[480px] sm:min-w-0"
+                  config={{ requests: { label: "Requests", color: "hsl(217, 91%, 60%)" } }}
+                >
+                  <BarChart data={hourlyChartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
+                    <YAxis allowDecimals={false} />
+                    <ChartTooltip cursor={{ fill: "rgba(59,130,246,0.1)" }} content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="count"
+                      fill="var(--color-requests)"
+                      radius={[4, 4, 0, 0]}
+                      isAnimationActive={false}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              </div>
             )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <CardTitle>This month’s traffic</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
             {isLoading ? (
               <Skeleton className="h-[240px] w-full" />
             ) : (
-              <ChartContainer
-                className="h-[240px]"
-                config={{ requests: { label: "Requests", color: "hsl(142, 71%, 45%)" } }}
-              >
-                <BarChart data={monthlyChartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
-                  <YAxis allowDecimals={false} />
-                  <ChartTooltip cursor={{ fill: "rgba(34,197,94,0.1)" }} content={<ChartTooltipContent />} />
-                  <Bar
-                    dataKey="count"
-                    fill="var(--color-requests)"
-                    radius={[4, 4, 0, 0]}
-                    isAnimationActive={false}
-                  />
-                </BarChart>
-              </ChartContainer>
+              <div className="-mx-2 overflow-x-auto sm:mx-0">
+                <ChartContainer
+                  className="h-[240px] min-w-[480px] sm:min-w-0"
+                  config={{ requests: { label: "Requests", color: "hsl(142, 71%, 45%)" } }}
+                >
+                  <BarChart data={monthlyChartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickMargin={8} minTickGap={16} />
+                    <YAxis allowDecimals={false} />
+                    <ChartTooltip cursor={{ fill: "rgba(34,197,94,0.1)" }} content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="count"
+                      fill="var(--color-requests)"
+                      radius={[4, 4, 0, 0]}
+                      isAnimationActive={false}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              </div>
             )}
           </CardContent>
         </Card>
