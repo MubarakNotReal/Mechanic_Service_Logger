@@ -223,13 +223,13 @@ export default function ServicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold" data-testid="text-services-title">Services</h1>
           <p className="text-muted-foreground">Create and view service records</p>
         </div>
         {canEdit && (
-          <Button onClick={() => setDialogOpen(true)} data-testid="button-add-service">
+          <Button onClick={() => setDialogOpen(true)} data-testid="button-add-service" className="self-start sm:self-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Service
           </Button>
@@ -252,19 +252,20 @@ export default function ServicesPage() {
               <p className="text-muted-foreground">No service records found</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Vehicle</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Work Performed</TableHead>
-                  <TableHead>Mechanic</TableHead>
-                  <TableHead className="text-right">Total Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedServices.map((service) => {
+            <div className="overflow-x-auto">
+              <Table className="min-w-[720px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Work Performed</TableHead>
+                    <TableHead>Mechanic</TableHead>
+                    <TableHead className="text-right">Total Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedServices.map((service) => {
                   const vehicle = vehicles.find((v) => v.id === service.vehicleId);
                   const customer = customers.find((c) => c.id === service.customerId);
                   return (
@@ -318,9 +319,10 @@ export default function ServicesPage() {
                       </TableCell>
                     </TableRow>
                   );
-                })}
-              </TableBody>
-            </Table>
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -154,13 +154,17 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold" data-testid="text-customers-title">Customers</h1>
           <p className="text-muted-foreground">Manage customer information and contacts</p>
         </div>
         {canEdit && (
-          <Button onClick={() => handleOpenDialog()} data-testid="button-add-customer">
+          <Button
+            onClick={() => handleOpenDialog()}
+            data-testid="button-add-customer"
+            className="self-start sm:self-auto"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add Customer
           </Button>
@@ -191,18 +195,19 @@ export default function CustomersPage() {
               <p className="text-muted-foreground">No customers found</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Address</TableHead>
-                  {canEdit && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCustomers.map((customer) => (
+            <div className="overflow-x-auto">
+              <Table className="min-w-[720px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Address</TableHead>
+                    {canEdit && <TableHead className="text-right">Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCustomers.map((customer) => (
                   <TableRow
                     key={customer.id}
                     data-testid={`row-customer-${customer.id}`}
@@ -275,8 +280,9 @@ export default function CustomersPage() {
                     )}
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

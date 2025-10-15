@@ -620,13 +620,13 @@ export default function VehiclesPage() {
                     {lookupResult.services.length} record{lookupResult.services.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="mt-4 rounded-lg border">
+                <div className="mt-4 overflow-x-auto rounded-lg border">
                   {lookupResult.services.length === 0 ? (
                     <div className="py-12 text-center text-muted-foreground">
                       No services recorded for this vehicle yet.
                     </div>
                   ) : (
-                    <Table>
+                    <Table className="min-w-[640px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Date</TableHead>

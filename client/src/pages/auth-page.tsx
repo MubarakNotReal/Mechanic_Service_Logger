@@ -22,8 +22,8 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      <div className="flex items-center justify-center p-8">
+    <div className="grid min-h-screen lg:grid-cols-2">
+      <div className="flex items-center justify-center px-6 py-10 sm:p-12">
         <div className="w-full max-w-md space-y-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export default function AuthPage() {
         </div>
       </div>
 
-      <div className="hidden lg:flex items-center justify-center bg-muted p-12">
+  <div className="hidden lg:flex items-center justify-center bg-muted p-12">
         <div className="max-w-md space-y-8">
           <div>
             <h2 className="text-3xl font-bold mb-4">Professional Shop Management</h2>

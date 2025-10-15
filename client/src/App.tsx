@@ -71,15 +71,17 @@ function AppContent() {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex min-h-screen w-full overflow-hidden">
         <AppSidebar />
         <div className="flex flex-col flex-1">
-          <header className="flex items-center justify-between p-4 border-b">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4 sm:p-5 lg:p-6">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto p-8">
-            <Router />
+          <main className="flex-1 overflow-auto px-4 pb-8 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+            <div className="mx-auto max-w-6xl w-full space-y-6">
+              <Router />
+            </div>
           </main>
         </div>
       </div>
