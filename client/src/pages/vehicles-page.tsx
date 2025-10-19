@@ -98,6 +98,7 @@ export default function VehiclesPage() {
   const [initializedPlate, setInitializedPlate] = useState<string | null>(null);
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
   const [visibleServiceCount, setVisibleServiceCount] = useState(SERVICE_PAGE_SIZE);
+  const [lastCompletedPlate, setLastCompletedPlate] = useState<string | null>(null);
   const [isHydratingResult, startTransition] = useTransition();
 
   const canEdit = user?.role === "admin" || user?.role === "mechanic";
@@ -133,12 +134,14 @@ export default function VehiclesPage() {
         setLookupResult(null);
         setVisibleServiceCount(SERVICE_PAGE_SIZE);
       });
+      setLastCompletedPlate(null);
     },
     onSuccess: (data, plate) => {
       setNotFound(false);
       setLookupError(null);
       setPlateInput(plate);
       setInitializedPlate(data.vehicle.plateNumber);
+      setLastCompletedPlate(data.vehicle.plateNumber);
       startTransition(() => {
         setLookupResult(data);
         setVisibleServiceCount(Math.min(SERVICE_PAGE_SIZE, data.services.length || SERVICE_PAGE_SIZE));
@@ -162,6 +165,7 @@ export default function VehiclesPage() {
         });
         const normalized = plate.trim().toUpperCase();
         setInitializedPlate(normalized);
+        setLastCompletedPlate(normalized);
         setLocation(`/?plate=${encodeURIComponent(normalized)}`, { replace: true });
         return;
       }
@@ -436,15 +440,17 @@ export default function VehiclesPage() {
 
     setPlateInput((prev) => (prev === normalizedPlate ? prev : normalizedPlate));
 
+    if (initializedPlate === normalizedPlate) {
+      if (isLookupPending) {
+        return;
+      }
+
+      if (lastCompletedPlate === normalizedPlate || notFound) {
+        return;
+      }
+    }
+
     if (isLookupPending) {
-      return;
-    }
-
-    if (lookupResult && lookupResult.vehicle.plateNumber === normalizedPlate) {
-      return;
-    }
-
-    if (initializedPlate === normalizedPlate && notFound) {
       return;
     }
 
@@ -453,7 +459,7 @@ export default function VehiclesPage() {
     }
 
     lookupMutate(normalizedPlate);
-  }, [currentLocation, initializedPlate, isLookupPending, lookupMutate, lookupResult, notFound]);
+  }, [currentLocation, initializedPlate, isLookupPending, lastCompletedPlate, lookupMutate, notFound]);
 
   const isLoadingLookup = isLookupPending || isHydratingResult;
   const hasLookupResult = Boolean(lookupResult);
