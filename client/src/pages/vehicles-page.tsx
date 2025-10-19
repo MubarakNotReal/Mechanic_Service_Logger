@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
@@ -62,6 +62,8 @@ type RegistrationResult = {
   vehicle: Vehicle;
 };
 
+const SERVICE_PAGE_SIZE = 20;
+
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "SAR",
@@ -95,6 +97,8 @@ export default function VehiclesPage() {
 
   const [initializedPlate, setInitializedPlate] = useState<string | null>(null);
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false);
+  const [visibleServiceCount, setVisibleServiceCount] = useState(SERVICE_PAGE_SIZE);
+  const [isHydratingResult, startTransition] = useTransition();
 
   const canEdit = user?.role === "admin" || user?.role === "mechanic";
 
@@ -125,28 +129,37 @@ export default function VehiclesPage() {
     onMutate: () => {
       setLookupError(null);
       setNotFound(false);
-      setLookupResult(null);
+      startTransition(() => {
+        setLookupResult(null);
+        setVisibleServiceCount(SERVICE_PAGE_SIZE);
+      });
     },
     onSuccess: (data, plate) => {
-      setLookupResult(data);
       setNotFound(false);
       setLookupError(null);
-      setRegistrationForm((prev) => ({
-        ...prev,
-        plateNumber: data.vehicle.plateNumber,
-      }));
       setPlateInput(plate);
       setInitializedPlate(data.vehicle.plateNumber);
+      startTransition(() => {
+        setLookupResult(data);
+        setVisibleServiceCount(Math.min(SERVICE_PAGE_SIZE, data.services.length || SERVICE_PAGE_SIZE));
+        setRegistrationForm((prev) => ({
+          ...prev,
+          plateNumber: data.vehicle.plateNumber,
+        }));
+      });
       setLocation(`/?plate=${encodeURIComponent(data.vehicle.plateNumber)}`, { replace: true });
     },
     onError: (error, plate) => {
       if (error.status === 404) {
         setNotFound(true);
         setLookupResult(null);
-        setRegistrationForm((prev) => ({
-          ...prev,
-          plateNumber: plate.trim().toUpperCase(),
-        }));
+        startTransition(() => {
+          setRegistrationForm((prev) => ({
+            ...prev,
+            plateNumber: plate.trim().toUpperCase(),
+          }));
+          setVisibleServiceCount(SERVICE_PAGE_SIZE);
+        });
         const normalized = plate.trim().toUpperCase();
         setInitializedPlate(normalized);
         setLocation(`/?plate=${encodeURIComponent(normalized)}`, { replace: true });
@@ -442,8 +455,16 @@ export default function VehiclesPage() {
     lookupMutate(normalizedPlate);
   }, [currentLocation, initializedPlate, isLookupPending, lookupMutate, lookupResult, notFound]);
 
-  const isLoadingLookup = isLookupPending;
+  const isLoadingLookup = isLookupPending || isHydratingResult;
   const hasLookupResult = Boolean(lookupResult);
+  const totalServiceCount = lookupResult?.services.length ?? 0;
+  const visibleServices = useMemo(() => {
+    if (!lookupResult) {
+      return [] as Service[];
+    }
+    return lookupResult.services.slice(0, visibleServiceCount);
+  }, [lookupResult, visibleServiceCount]);
+  const canShowMoreServices = totalServiceCount > visibleServices.length;
 
   return (
     <div className="space-y-6">
@@ -615,10 +636,36 @@ export default function VehiclesPage() {
 
               <div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-lg font-semibold">Service history</h3>
-                  <span className="text-sm text-muted-foreground">
-                    {lookupResult.services.length} record{lookupResult.services.length === 1 ? "" : "s"}
-                  </span>
+                  <div className="flex flex-col">
+                    <h3 className="text-lg font-semibold">Service history</h3>
+                    <span className="text-sm text-muted-foreground">
+                      Showing {visibleServices.length} of {totalServiceCount} record{totalServiceCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {canShowMoreServices && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setVisibleServiceCount((count) =>
+                            Math.min(count + SERVICE_PAGE_SIZE, totalServiceCount),
+                          )
+                        }
+                      >
+                        Show more
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setVisibleServiceCount(totalServiceCount)}
+                      >
+                        Show all
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {lookupResult.services.length === 0 ? (
                   <div className="mt-4 rounded-lg border py-12 text-center text-muted-foreground">
@@ -637,7 +684,7 @@ export default function VehiclesPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {lookupResult.services.map((service) => (
+                          {visibleServices.map((service) => (
                             <TableRow
                               key={service.id}
                               className="cursor-pointer hover:bg-muted/50"
@@ -676,7 +723,7 @@ export default function VehiclesPage() {
                       </Table>
                     </div>
                     <div className="mt-4 space-y-4 md:hidden">
-                      {lookupResult.services.map((service) => (
+                      {visibleServices.map((service) => (
                         <button
                           key={service.id}
                           type="button"
