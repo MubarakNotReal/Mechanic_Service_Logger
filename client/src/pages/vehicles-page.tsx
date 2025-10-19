@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
@@ -63,6 +63,33 @@ type RegistrationResult = {
 };
 
 const SERVICE_PAGE_SIZE = 20;
+const LOOKUP_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url: string, options?: RequestInit, timeout = LOOKUP_TIMEOUT_MS) {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = timeout
+    ? setTimeout(() => {
+        controller?.abort();
+      }, timeout)
+    : null;
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller?.signal,
+    });
+    return response;
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -106,7 +133,7 @@ export default function VehiclesPage() {
   const lookupMutation = useMutation<LookupResult, LookupError, string>({
     mutationFn: async (plate) => {
       const normalizedPlate = plate.trim().toUpperCase();
-      const res = await fetch(`/api/vehicles/lookup/${encodeURIComponent(normalizedPlate)}`, {
+      const res = await fetchWithTimeout(`/api/vehicles/lookup/${encodeURIComponent(normalizedPlate)}`, {
         credentials: "include",
       });
 
@@ -150,7 +177,7 @@ export default function VehiclesPage() {
           plateNumber: data.vehicle.plateNumber,
         }));
       });
-      setLocation(`/?plate=${encodeURIComponent(data.vehicle.plateNumber)}`, { replace: true });
+      syncPlateQuery(data.vehicle.plateNumber);
     },
     onError: (error, plate) => {
       if (error.status === 404) {
@@ -166,7 +193,7 @@ export default function VehiclesPage() {
         const normalized = plate.trim().toUpperCase();
         setInitializedPlate(normalized);
         setLastCompletedPlate(normalized);
-        setLocation(`/?plate=${encodeURIComponent(normalized)}`, { replace: true });
+        syncPlateQuery(normalized);
         return;
       }
 
@@ -228,7 +255,7 @@ export default function VehiclesPage() {
       toast({ title: "Vehicle registered", description: "You can now add service records." });
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
-      setLocation(`/?plate=${encodeURIComponent(vehicle.plateNumber)}`, { replace: true });
+      syncPlateQuery(vehicle.plateNumber);
     },
     onError: (error) => {
       setRegistrationError(error.message || "Failed to register vehicle");
@@ -244,6 +271,10 @@ export default function VehiclesPage() {
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (isLoadingLookup) {
+      return;
+    }
 
     const normalizedPlate = plateInput.trim().toUpperCase();
     if (!normalizedPlate) {
@@ -279,6 +310,23 @@ export default function VehiclesPage() {
     setRegistrationError(null);
     setRegistrationDialogOpen(false);
   };
+
+  const syncPlateQuery = useCallback(
+    (plate: string) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const currentPlate = searchParams.get("plate");
+      if (currentPlate === plate) {
+        return;
+      }
+
+      setLocation(`/?plate=${encodeURIComponent(plate)}`, { replace: true });
+    },
+    [setLocation],
+  );
 
   const renderRegistrationForm = (
     options: {
