@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
@@ -127,6 +127,7 @@ export default function VehiclesPage() {
   const [visibleServiceCount, setVisibleServiceCount] = useState(SERVICE_PAGE_SIZE);
   const [lastCompletedPlate, setLastCompletedPlate] = useState<string | null>(null);
   const [isHydratingResult, startTransition] = useTransition();
+  const lastRequestRef = useRef<{ plate: string; timestamp: number } | null>(null);
 
   const canEdit = user?.role === "admin" || user?.role === "mechanic";
 
@@ -154,7 +155,7 @@ export default function VehiclesPage() {
       const payload = (await res.json()) as LookupResult;
       return { ...payload, services: sortServicesByDate(payload.services) };
     },
-    onMutate: () => {
+    onMutate: (plate) => {
       setLookupError(null);
       setNotFound(false);
       startTransition(() => {
@@ -162,6 +163,9 @@ export default function VehiclesPage() {
         setVisibleServiceCount(SERVICE_PAGE_SIZE);
       });
       setLastCompletedPlate(null);
+      if (plate) {
+        lastRequestRef.current = { plate: plate.trim().toUpperCase(), timestamp: Date.now() };
+      }
     },
     onSuccess: (data, plate) => {
       setNotFound(false);
@@ -281,6 +285,14 @@ export default function VehiclesPage() {
       setLookupError("Plate number is required");
       return;
     }
+
+    const now = Date.now();
+    const lastAttempt = lastRequestRef.current;
+    if (lastAttempt && lastAttempt.plate === normalizedPlate && now - lastAttempt.timestamp < 1500) {
+      return;
+    }
+
+    lastRequestRef.current = { plate: normalizedPlate, timestamp: now };
 
     setLookupError(null);
     setNotFound(false);
@@ -506,6 +518,13 @@ export default function VehiclesPage() {
       setInitializedPlate(normalizedPlate);
     }
 
+    const now = Date.now();
+    const lastAttempt = lastRequestRef.current;
+    if (lastAttempt && lastAttempt.plate === normalizedPlate && now - lastAttempt.timestamp < 1500) {
+      return;
+    }
+
+    lastRequestRef.current = { plate: normalizedPlate, timestamp: now };
     lookupMutate(normalizedPlate);
   }, [currentLocation, initializedPlate, isLookupPending, lastCompletedPlate, lookupMutate, notFound]);
 
