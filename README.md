@@ -48,6 +48,48 @@ A full-stack mechanic shop information logger for tracking customers, vehicles, 
    ```
    The API and Vite dev server will be available on the port specified by `PORT` (defaults to `5000`).
 
+## Docker + Cloudflare Tunnel deployment
+
+These scripts package the entire stack (API, client, PostgreSQL, Cloudflare Tunnel) so a shop can run everything locally with minimal setup.
+
+1. **Install Docker Desktop** (or Docker Engine + Compose) on the host PC.
+2. **Copy environment template**
+   ```pwsh
+   Copy-Item .env.example .env
+   ```
+   Update the secrets (database password, `SESSION_SECRET`, optional tunnel name).
+3. **Provision a named Cloudflare Tunnel** once on the host machine:
+   ```pwsh
+   cloudflared tunnel login
+   cloudflared tunnel create mechanic-portal
+   ```
+   Cloudflare outputs a credentials JSON (e.g. `~/.cloudflared/<UUID>.json`).
+4. **Create the tunnel config directory** and copy the credentials + config:
+   ```pwsh
+   New-Item -ItemType Directory -Path .\cloudflared -Force | Out-Null
+   Copy-Item "$env:USERPROFILE\.cloudflared\*.json" .\cloudflared\
+   "tunnel: $env:CLOUDFLARE_TUNNEL_NAME`ncredentials-file: /etc/cloudflared/<UUID>.json`ningress:`n  - hostname: mechanic-portal.cfargotunnel.com`n    service: http://app:5000`n  - service: http_status:404" | Out-File .\cloudflared\config.yml -Encoding utf8
+   ```
+   Replace `<UUID>.json` and the hostname with the values Cloudflare provided, or point to a custom subdomain you configured in Cloudflare DNS.
+5. **Build and launch the stack**
+   ```pwsh
+   docker compose up --build -d
+   ```
+   This will
+   - build the production Node image (`Dockerfile`)
+   - start PostgreSQL and persist data in the `postgres_data` volume
+   - run database migrations automatically
+   - expose the app locally on `http://localhost:5000`
+   - bring up the Cloudflare tunnel so the same app is reachable at your chosen hostname
+6. **Shutdown / restart**
+   ```pwsh
+   docker compose stop        # stop services
+   docker compose start       # restart
+   docker compose down        # stop and remove containers (data volumes stay)
+   ```
+
+Uploaded media lives in the `uploads` volume; back it up alongside the database volume. Override any defaults by editing `.env` before starting the stack.
+
 ## Database schema overview
 
 | Table | Purpose |

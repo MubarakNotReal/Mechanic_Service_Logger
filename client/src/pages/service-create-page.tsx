@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -10,6 +10,7 @@ import {
   Loader2,
   Upload,
   User,
+  Video,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,9 @@ export default function ServiceCreatePage() {
 
   const [draft, setDraft] = useState<ServiceDraft>(() => initialDraft());
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
+  const photoCaptureInputRef = useRef<HTMLInputElement | null>(null);
+  const videoCaptureInputRef = useRef<HTMLInputElement | null>(null);
 
   const plateParam = useMemo(() => {
     if (typeof window === "undefined") {
@@ -232,7 +236,7 @@ export default function ServiceCreatePage() {
   const customer = lookupQuery.data?.customer;
 
   return (
-    <form className="space-y-8" onSubmit={handleSubmit}>
+  <form className="space-y-8" onSubmit={handleSubmit}>
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           type="button"
@@ -308,34 +312,60 @@ export default function ServiceCreatePage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Photos & videos</p>
                       <p className="text-xs text-muted-foreground">
-                        Attach up to {MAX_MEDIA_FILES} files. Drag and drop or browse.
+                        Attach up to {MAX_MEDIA_FILES} files. Capture new media or select from your library.
                       </p>
                     </div>
-                    <Button type="button" variant="secondary" onClick={() => document.getElementById("service-media-uploader")?.click()}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Add media
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="secondary" onClick={() => galleryFileInputRef.current?.click()}>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Browse
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => photoCaptureInputRef.current?.click()}>
+                        <Camera className="mr-2 h-4 w-4" />
+                        Take photo
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => videoCaptureInputRef.current?.click()}>
+                        <Video className="mr-2 h-4 w-4" />
+                        Record video
+                      </Button>
+                    </div>
                   </div>
                   <input
-                    id="service-media-uploader"
+                    ref={galleryFileInputRef}
                     type="file"
                     accept="image/*,video/*"
                     multiple
                     className="hidden"
                     onChange={handleMediaChange}
                   />
+                  <input
+                    ref={photoCaptureInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleMediaChange}
+                  />
+                  <input
+                    ref={videoCaptureInputRef}
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleMediaChange}
+                  />
 
                   <div
                     className="flex min-h-[160px] flex-col items-center justify-center rounded-lg border border-dashed border-muted p-6 text-center"
-                    onClick={() => document.getElementById("service-media-uploader")?.click()}
+                    onClick={() => galleryFileInputRef.current?.click()}
                     role="presentation"
                   >
                     <FileImage className="h-9 w-9 text-muted-foreground" />
-                    <p className="mt-3 text-sm font-medium">Drop files here or click to browse</p>
+                    <p className="mt-3 text-sm font-medium">Drop files here, browse, or use camera capture</p>
                     <p className="text-xs text-muted-foreground">
                       High-quality visuals help build trust and document the job.
                     </p>

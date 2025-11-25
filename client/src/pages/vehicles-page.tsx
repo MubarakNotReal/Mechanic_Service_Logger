@@ -48,6 +48,19 @@ type LookupResult = {
 
 type LookupError = Error & { status?: number };
 
+type SuggestionReason = "plate" | "phone" | "name" | "vehicle" | "partial";
+
+type VehicleSuggestion = {
+  vehicle: Vehicle;
+  customer: Customer | null;
+  reason: SuggestionReason;
+};
+
+type VehicleSearchResponse = {
+  match: LookupResult | null;
+  suggestions: VehicleSuggestion[];
+};
+
 type RegistrationFormState = {
   customerName: string;
   phone: string;
@@ -102,15 +115,36 @@ function sortServicesByDate(entries: Service[]): Service[] {
   );
 }
 
+const isLikelyPlate = (value: string): boolean => {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length >= 4 && /[A-Za-z]/.test(compact) && /\d/.test(compact);
+};
+
+const formatSuggestionReason = (reason: SuggestionReason): string => {
+  switch (reason) {
+    case "plate":
+      return "plate number";
+    case "phone":
+      return "phone number";
+    case "name":
+      return "customer name";
+    case "vehicle":
+      return "vehicle details";
+    default:
+      return "partial match";
+  }
+};
+
 export default function VehiclesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [currentLocation, setLocation] = useLocation();
 
-  const [plateInput, setPlateInput] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [suggestions, setSuggestions] = useState<VehicleSuggestion[]>([]);
 
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [registrationForm, setRegistrationForm] = useState<RegistrationFormState>(() => ({
@@ -127,23 +161,15 @@ export default function VehiclesPage() {
   const [visibleServiceCount, setVisibleServiceCount] = useState(SERVICE_PAGE_SIZE);
   const [lastCompletedPlate, setLastCompletedPlate] = useState<string | null>(null);
   const [isHydratingResult, startTransition] = useTransition();
-  const lastRequestRef = useRef<{ plate: string; timestamp: number } | null>(null);
+  const lastRequestRef = useRef<{ term: string; timestamp: number } | null>(null);
 
   const canEdit = user?.role === "admin" || user?.role === "mechanic";
 
-  const lookupMutation = useMutation<LookupResult, LookupError, string>({
-    mutationFn: async (plate) => {
-      const normalizedPlate = plate.trim().toUpperCase();
-      const res = await fetchWithTimeout(`/api/vehicles/lookup/${encodeURIComponent(normalizedPlate)}`, {
+  const lookupMutation = useMutation<VehicleSearchResponse, LookupError, string>({
+    mutationFn: async (term) => {
+      const res = await fetchWithTimeout(`/api/vehicles/search?query=${encodeURIComponent(term)}`, {
         credentials: "include",
       });
-
-      if (res.status === 404) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        const error = new Error(body.error ?? "Vehicle not found");
-        (error as LookupError).status = 404;
-        throw error;
-      }
 
       if (!res.ok) {
         const text = (await res.text()) || res.statusText;
@@ -152,55 +178,74 @@ export default function VehiclesPage() {
         throw error;
       }
 
-      const payload = (await res.json()) as LookupResult;
-      return { ...payload, services: sortServicesByDate(payload.services) };
+      const payload = (await res.json()) as VehicleSearchResponse;
+      const match = payload.match
+        ? {
+            ...payload.match,
+            services: sortServicesByDate(payload.match.services),
+          }
+        : null;
+
+      return {
+        match,
+        suggestions: payload.suggestions,
+      };
     },
-    onMutate: (plate) => {
+    onMutate: (term) => {
       setLookupError(null);
       setNotFound(false);
+      setSuggestions([]);
       startTransition(() => {
         setLookupResult(null);
         setVisibleServiceCount(SERVICE_PAGE_SIZE);
       });
       setLastCompletedPlate(null);
-      if (plate) {
-        lastRequestRef.current = { plate: plate.trim().toUpperCase(), timestamp: Date.now() };
+      if (term) {
+        lastRequestRef.current = { term: term.trim(), timestamp: Date.now() };
       }
     },
-    onSuccess: (data, plate) => {
-      setNotFound(false);
-      setLookupError(null);
-      setPlateInput(plate);
-      setInitializedPlate(data.vehicle.plateNumber);
-      setLastCompletedPlate(data.vehicle.plateNumber);
-      startTransition(() => {
-        setLookupResult(data);
-        setVisibleServiceCount(Math.min(SERVICE_PAGE_SIZE, data.services.length || SERVICE_PAGE_SIZE));
-        setRegistrationForm((prev) => ({
-          ...prev,
-          plateNumber: data.vehicle.plateNumber,
-        }));
-      });
-      syncPlateQuery(data.vehicle.plateNumber);
-    },
-    onError: (error, plate) => {
-      if (error.status === 404) {
-        setNotFound(true);
-        setLookupResult(null);
+    onSuccess: (data, term) => {
+      const match = data.match;
+      setSuggestions(data.suggestions);
+
+      if (match) {
+        setNotFound(false);
+        setLookupError(null);
+        setSearchInput(match.vehicle.plateNumber);
+        setInitializedPlate(match.vehicle.plateNumber);
+        setLastCompletedPlate(match.vehicle.plateNumber);
         startTransition(() => {
+          setLookupResult(match);
+          setVisibleServiceCount(
+            Math.min(SERVICE_PAGE_SIZE, match.services.length || SERVICE_PAGE_SIZE),
+          );
           setRegistrationForm((prev) => ({
             ...prev,
-            plateNumber: plate.trim().toUpperCase(),
+            plateNumber: match.vehicle.plateNumber,
           }));
-          setVisibleServiceCount(SERVICE_PAGE_SIZE);
         });
-        const normalized = plate.trim().toUpperCase();
-        setInitializedPlate(normalized);
-        setLastCompletedPlate(normalized);
-        syncPlateQuery(normalized);
+        syncPlateQuery(match.vehicle.plateNumber);
         return;
       }
 
+      setLookupResult(null);
+      setNotFound(true);
+      startTransition(() => {
+        setVisibleServiceCount(SERVICE_PAGE_SIZE);
+      });
+
+      if (isLikelyPlate(term)) {
+        const normalized = term.trim().toUpperCase();
+        setInitializedPlate(normalized);
+        setRegistrationForm((prev) => ({
+          ...prev,
+          plateNumber: normalized,
+        }));
+      } else {
+        setInitializedPlate(null);
+      }
+    },
+    onError: (error) => {
       setLookupError(error.message || "Failed to search for vehicle");
     },
   });
@@ -244,7 +289,8 @@ export default function VehiclesPage() {
         services: [],
       });
       setNotFound(false);
-      setPlateInput(vehicle.plateNumber);
+      setSuggestions([]);
+      setSearchInput(vehicle.plateNumber);
       setInitializedPlate(vehicle.plateNumber);
       setRegistrationDialogOpen(false);
       setRegistrationForm((prev) => ({
@@ -280,24 +326,27 @@ export default function VehiclesPage() {
       return;
     }
 
-    const normalizedPlate = plateInput.trim().toUpperCase();
-    if (!normalizedPlate) {
-      setLookupError("Plate number is required");
+    const rawTerm = searchInput.trim();
+    if (!rawTerm) {
+      setLookupError("Enter a search term");
       return;
     }
+
+    const plateCandidate = isLikelyPlate(rawTerm);
+    const normalizedTerm = plateCandidate ? rawTerm.toUpperCase() : rawTerm;
 
     const now = Date.now();
     const lastAttempt = lastRequestRef.current;
-    if (lastAttempt && lastAttempt.plate === normalizedPlate && now - lastAttempt.timestamp < 1500) {
+    if (lastAttempt && lastAttempt.term === normalizedTerm && now - lastAttempt.timestamp < 1500) {
       return;
     }
 
-    lastRequestRef.current = { plate: normalizedPlate, timestamp: now };
+    lastRequestRef.current = { term: normalizedTerm, timestamp: now };
 
     setLookupError(null);
     setNotFound(false);
-    setInitializedPlate(normalizedPlate);
-    lookupMutate(normalizedPlate);
+    setInitializedPlate(plateCandidate ? normalizedTerm : null);
+    lookupMutate(normalizedTerm);
   };
 
   const handleRegistrationSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -308,7 +357,7 @@ export default function VehiclesPage() {
   const openRegistrationDialog = () => {
     setRegistrationForm((prev) => ({
       ...prev,
-      plateNumber: plateInput.trim().toUpperCase() || prev.plateNumber,
+      plateNumber: searchInput.trim().toUpperCase() || prev.plateNumber,
     }));
     setRegistrationError(null);
     setRegistrationDialogOpen(true);
@@ -339,6 +388,22 @@ export default function VehiclesPage() {
     },
     [setLocation],
   );
+
+  const handleSuggestionSelect = (plate: string) => {
+    if (isLookupPending) {
+      return;
+    }
+
+    const normalized = plate.trim().toUpperCase();
+    if (!normalized) {
+      return;
+    }
+
+    setSearchInput(normalized);
+    setInitializedPlate(normalized);
+    setNotFound(false);
+    lookupMutate(normalized);
+  };
 
   const renderRegistrationForm = (
     options: {
@@ -498,7 +563,7 @@ export default function VehiclesPage() {
       return;
     }
 
-    setPlateInput((prev) => (prev === normalizedPlate ? prev : normalizedPlate));
+  setSearchInput((prev) => (prev === normalizedPlate ? prev : normalizedPlate));
 
     if (initializedPlate === normalizedPlate) {
       if (isLookupPending) {
@@ -520,11 +585,11 @@ export default function VehiclesPage() {
 
     const now = Date.now();
     const lastAttempt = lastRequestRef.current;
-    if (lastAttempt && lastAttempt.plate === normalizedPlate && now - lastAttempt.timestamp < 1500) {
+    if (lastAttempt && lastAttempt.term === normalizedPlate && now - lastAttempt.timestamp < 1500) {
       return;
     }
 
-    lastRequestRef.current = { plate: normalizedPlate, timestamp: now };
+    lastRequestRef.current = { term: normalizedPlate, timestamp: now };
     lookupMutate(normalizedPlate);
   }, [currentLocation, initializedPlate, isLookupPending, lastCompletedPlate, lookupMutate, notFound]);
 
@@ -544,7 +609,7 @@ export default function VehiclesPage() {
       <div>
         <h1 className="text-3xl font-bold">Vehicle search</h1>
         <p className="text-muted-foreground">
-          Look up vehicles by plate number, review their history, and register new customers when needed.
+          Look up vehicles by plate, phone number, or customer name, review their history, and register new customers when needed.
         </p>
       </div>
 
@@ -572,8 +637,8 @@ export default function VehiclesPage() {
       <Card>
         <CardHeader className="flex flex-col gap-2 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>Search by plate number</CardTitle>
-            <CardDescription>Type a plate number to load vehicle, owner, and service history.</CardDescription>
+            <CardTitle>Search vehicles</CardTitle>
+            <CardDescription>Look up a vehicle by plate, phone number, or customer name.</CardDescription>
           </div>
           {canEdit && (
             <Button onClick={openRegistrationDialog} className="whitespace-nowrap">
@@ -585,14 +650,14 @@ export default function VehiclesPage() {
         <CardContent className="p-4 pt-0 sm:px-6 sm:pb-6">
           <form onSubmit={handleSearchSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
-              <Label htmlFor="plate-search">Plate number</Label>
+              <Label htmlFor="vehicle-search">Search term</Label>
               <div className="mt-2 flex gap-2">
                 <Input
-                  id="plate-search"
-                  value={plateInput}
-                  onChange={(event) => setPlateInput(event.target.value.toUpperCase())}
-                  placeholder="e.g. ABC-1234"
-                  className="uppercase font-mono"
+                  id="vehicle-search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Plate, phone, or customer name"
+                  autoComplete="off"
                   required
                 />
                 <Button type="submit" disabled={isLoadingLookup} className="whitespace-nowrap">
@@ -625,6 +690,48 @@ export default function VehiclesPage() {
           <CardContent className="space-y-3 p-4 sm:p-6">
             {[1, 2].map((key) => (
               <Skeleton key={key} className="h-16 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {!hasLookupResult && !isLoadingLookup && suggestions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Did you mean?</CardTitle>
+            <CardDescription>Select one of the similar records below to load its history.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {suggestions.map((suggestion) => (
+              <div
+                key={suggestion.vehicle.id}
+                className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Badge variant="outline" className="font-mono text-base">
+                      {suggestion.vehicle.plateNumber}
+                    </Badge>
+                    <span className="capitalize">Matched via {formatSuggestionReason(suggestion.reason)}</span>
+                  </div>
+                  <p className="text-sm font-semibold">
+                    {suggestion.vehicle.make} {suggestion.vehicle.model} ({suggestion.vehicle.year})
+                  </p>
+                  {suggestion.customer && (
+                    <p className="text-xs text-muted-foreground">
+                      {suggestion.customer.name}
+                      {suggestion.customer.phone ? ` • ${suggestion.customer.phone}` : ""}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleSuggestionSelect(suggestion.vehicle.plateNumber)}
+                  className="whitespace-nowrap"
+                >
+                  View vehicle
+                </Button>
+              </div>
             ))}
           </CardContent>
         </Card>
@@ -839,7 +946,7 @@ export default function VehiclesPage() {
           <CardHeader>
             <CardTitle>Register a new vehicle</CardTitle>
             <CardDescription>
-              No vehicle matched this plate. Capture the owner and vehicle details to register it now.
+              No vehicle matched this search term. Capture the owner and vehicle details to register it now.
             </CardDescription>
           </CardHeader>
           <CardContent>

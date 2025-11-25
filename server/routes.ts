@@ -5,13 +5,35 @@ import fs from "fs/promises";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertVehicleSchema, insertServiceSchema } from "@shared/schema";
+import {
+  insertCustomerSchema,
+  insertVehicleSchema,
+  insertServiceSchema,
+  type Customer,
+  type Vehicle,
+  type Service,
+} from "@shared/schema";
 import { requireAuth, requireRole } from "./middleware";
 
 const MEDIA_UPLOAD_LIMIT = 10;
 const MAX_MEDIA_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 const uploadRoot = path.resolve(process.cwd(), "uploads");
 const serviceMediaDir = path.join(uploadRoot, "service-media");
+const VEHICLE_SUGGESTION_LIMIT = 5;
+
+type SuggestionReason = "plate" | "phone" | "name" | "vehicle" | "partial";
+
+type LookupPayload = {
+  vehicle: Vehicle;
+  customer: Customer | null;
+  services: Service[];
+};
+
+type SuggestionPayload = {
+  vehicle: Vehicle;
+  customer: Customer | null;
+  reason: SuggestionReason;
+};
 
 const mediaStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -59,6 +81,189 @@ async function cleanupUploadedFiles(files?: Express.Multer.File[]) {
       }),
     ),
   );
+}
+
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
+
+const normalizePhoneDigits = (value: string): string => value.replace(/\D/g, "");
+
+const hasLetters = (value: string): boolean => /[a-zA-Z]/.test(value);
+
+const hasDigits = (value: string): boolean => /\d/.test(value);
+
+const isLikelyPlate = (value: string): boolean => {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length >= 4 && hasLetters(compact) && hasDigits(compact);
+};
+
+async function buildLookupPayload(vehicle: Vehicle): Promise<LookupPayload> {
+  const [customer, services] = await Promise.all([
+    storage.getCustomer(vehicle.customerId),
+    storage.getServicesByVehicle(vehicle.id),
+  ]);
+
+  return {
+    vehicle,
+    customer: customer ?? null,
+    services,
+  };
+}
+
+function determineSuggestionReason(
+  normalizedTerm: string,
+  digitsOnly: string,
+  candidate: Vehicle,
+  customer: Customer | null,
+): SuggestionReason {
+  const upperTerm = normalizedTerm.toUpperCase();
+  const plateUpper = candidate.plateNumber.toUpperCase();
+
+  if (upperTerm && plateUpper.includes(upperTerm)) {
+    return "plate";
+  }
+
+  if (digitsOnly && customer?.phone) {
+    const customerDigits = normalizePhoneDigits(customer.phone);
+    if (customerDigits.includes(digitsOnly)) {
+      return "phone";
+    }
+  }
+
+  if (upperTerm && customer?.name && customer.name.toUpperCase().includes(upperTerm)) {
+    return "name";
+  }
+
+  if (
+    upperTerm &&
+    (candidate.make.toUpperCase().includes(upperTerm) || candidate.model.toUpperCase().includes(upperTerm))
+  ) {
+    return "vehicle";
+  }
+
+  return "partial";
+}
+
+async function resolvePrimaryMatch(term: string): Promise<{
+  match: LookupPayload | null;
+  seedSuggestions: SuggestionPayload[];
+}> {
+  const normalizedTerm = normalizeWhitespace(term);
+  const uppercaseTerm = normalizedTerm.toUpperCase();
+  const digitsOnly = normalizePhoneDigits(normalizedTerm);
+  const seedSuggestions: SuggestionPayload[] = [];
+
+  if (normalizedTerm && isLikelyPlate(normalizedTerm)) {
+    const vehicle = await storage.getVehicleByPlate(uppercaseTerm);
+    if (vehicle) {
+      return { match: await buildLookupPayload(vehicle), seedSuggestions };
+    }
+  }
+
+  if (digitsOnly.length >= 7) {
+    const customer = await storage.getCustomerByNormalizedPhone(digitsOnly);
+    if (customer) {
+      const vehiclesForCustomer = await storage.getVehiclesByCustomer(customer.id);
+      if (vehiclesForCustomer.length === 1) {
+        return {
+          match: await buildLookupPayload(vehiclesForCustomer[0]),
+          seedSuggestions,
+        };
+      }
+
+      for (const vehicle of vehiclesForCustomer) {
+        seedSuggestions.push({
+          vehicle,
+          customer,
+          reason: "phone",
+        });
+      }
+    }
+  }
+
+  if (normalizedTerm) {
+    const customersByName = await storage.getCustomersByExactName(normalizedTerm);
+    if (customersByName.length === 1) {
+      const singleCustomer = customersByName[0];
+      const vehiclesForCustomer = await storage.getVehiclesByCustomer(singleCustomer.id);
+      if (vehiclesForCustomer.length === 1) {
+        return {
+          match: await buildLookupPayload(vehiclesForCustomer[0]),
+          seedSuggestions,
+        };
+      }
+
+      for (const vehicle of vehiclesForCustomer) {
+        seedSuggestions.push({
+          vehicle,
+          customer: singleCustomer,
+          reason: "name",
+        });
+      }
+    } else if (customersByName.length > 1) {
+      for (const customer of customersByName) {
+        const vehiclesForCustomer = await storage.getVehiclesByCustomer(customer.id);
+        for (const vehicle of vehiclesForCustomer) {
+          seedSuggestions.push({
+            vehicle,
+            customer,
+            reason: "name",
+          });
+        }
+      }
+    }
+  }
+
+  return { match: null, seedSuggestions };
+}
+
+async function buildSuggestions(
+  term: string,
+  matchVehicleId: number | undefined,
+  seeds: SuggestionPayload[] = [],
+): Promise<SuggestionPayload[]> {
+  const normalizedTerm = normalizeWhitespace(term);
+  const digitsOnly = normalizePhoneDigits(normalizedTerm);
+  const candidateLimit = Math.max(VEHICLE_SUGGESTION_LIMIT, seeds.length);
+
+  const accumulator = new Map<number, SuggestionPayload>();
+  for (const suggestion of seeds) {
+    if (matchVehicleId && suggestion.vehicle.id === matchVehicleId) {
+      continue;
+    }
+    if (!accumulator.has(suggestion.vehicle.id)) {
+      accumulator.set(suggestion.vehicle.id, suggestion);
+    }
+  }
+
+  const fetchedCandidates = await storage.searchVehicleCandidates(normalizedTerm, candidateLimit * 2);
+  for (const candidate of fetchedCandidates) {
+    const vehicle = candidate.vehicle;
+    if (!vehicle) {
+      continue;
+    }
+
+    if (matchVehicleId && vehicle.id === matchVehicleId) {
+      continue;
+    }
+
+    if (accumulator.has(vehicle.id)) {
+      continue;
+    }
+
+    const customer = candidate.customer ?? null;
+    const reason = determineSuggestionReason(normalizedTerm, digitsOnly, vehicle, customer);
+    accumulator.set(vehicle.id, {
+      vehicle,
+      customer,
+      reason,
+    });
+
+    if (accumulator.size >= VEHICLE_SUGGESTION_LIMIT) {
+      break;
+    }
+  }
+
+  return Array.from(accumulator.values()).slice(0, VEHICLE_SUGGESTION_LIMIT);
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -128,6 +333,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(vehicles);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/vehicles/search", requireAuth, async (req, res) => {
+    const rawQuery =
+      typeof req.query.query === "string"
+        ? req.query.query
+        : typeof req.query.q === "string"
+          ? req.query.q
+          : "";
+
+    const searchTerm = normalizeWhitespace(rawQuery);
+
+    if (!searchTerm) {
+      return res.status(400).json({ error: "Search term is required" });
+    }
+
+    try {
+      const { match, seedSuggestions } = await resolvePrimaryMatch(searchTerm);
+      const suggestions = await buildSuggestions(searchTerm, match?.vehicle.id, seedSuggestions);
+
+      res.json({
+        match,
+        suggestions,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message ?? "Vehicle search failed" });
     }
   });
 
